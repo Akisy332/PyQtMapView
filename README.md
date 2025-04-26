@@ -1,2 +1,2 @@
 # PyQtMapView
-Library for offline interactive maps and using PyQt 5
+Library of offline interactive maps using PyQt 5
