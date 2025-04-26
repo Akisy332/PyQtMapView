@@ -16,12 +16,9 @@ import geocoder
 from typing import Callable, List, Dict, Union, Tuple
 from functools import partial
 
-from .mapPositionMarker import MapPositionMarker
-from .canvas_tile import CanvasTile
-from .mapButtons import MapButtons
+from .element import Tile, Marker, Buttons, Path
 from .utility_functions import decimal_to_osm, osm_to_decimal
-from .mapPath import MapPath
-# from .canvas_polygon import CanvasPolygon
+
 
 class PyQtMapView(QGraphicsView):
     def __init__(self, *args,
@@ -92,9 +89,9 @@ class PyQtMapView(QGraphicsView):
         self.fadingTimer.timeout.connect(self.fading_move)    
 
         # canvas objects
-        self.canvas_tile_array: List[List[CanvasTile]] = []
-        self.canvas_marker_list: List[MapPositionMarker] = []
-        self.mapPathList: List[MapPath] = []
+        self.canvas_tile_array: List[List[Tile]] = []
+        self.canvas_marker_list: List[Marker] = []
+        self.PathList: List[Path] = []
         # self.canvas_polygon_list: List[CanvasPolygon] = []
           
         # tile server and database path
@@ -141,7 +138,7 @@ class PyQtMapView(QGraphicsView):
         self.right_click_menu_commands: List[dict] = []  # list of dictionaries with "label": str, "command": Callable, "pass_coords": bool
 
         if buttons is True:
-            self.mapButtons = MapButtons(self)
+            self.Buttons = Buttons(self)
         
         self.init = False
 
@@ -247,7 +244,7 @@ class PyQtMapView(QGraphicsView):
         self.set_zoom(last_fitting_zoom_level)
         self.set_position(middle_position_lat, middle_position_long)
     
-    def set_position(self, deg_x, deg_y, text=None, marker=False, **kwargs) -> MapPositionMarker:
+    def set_position(self, deg_x, deg_y, text=None, marker=False, **kwargs) -> Marker:
         """ set new middle position of map in decimal coordinates """
 
         # convert given decimal coordinates to OSM coordinates and set corner positions accordingly
@@ -270,7 +267,7 @@ class PyQtMapView(QGraphicsView):
         return marker_object
     
     # debug
-    def set_address(self, address_string: str, marker: bool = False, text: str = None, **kwargs) -> MapPositionMarker:
+    def set_address(self, address_string: str, marker: bool = False, text: str = None, **kwargs) -> Marker:
         """ Function uses geocode service of OpenStreetMap (Nominatim).
             https://geocoder.readthedocs.io/providers/OpenStreetMap.html """
 
@@ -307,23 +304,23 @@ class PyQtMapView(QGraphicsView):
         else:
             return False
     
-    def set_marker(self, deg_x: float, deg_y: float, text: str = None, **kwargs) -> MapPositionMarker:
-        return MapPositionMarker(self, (deg_x, deg_y), text=text, **kwargs)
+    def set_marker(self, deg_x: float, deg_y: float, text: str = None, **kwargs) -> Marker:
+        return Marker(self, (deg_x, deg_y), text=text, **kwargs)
     
-    def set_path(self, startPosition: tuple, position_list: list[tuple], **kwargs) -> MapPath:
-        return MapPath(self, startPosition, position_list, **kwargs)
+    def set_path(self, startPosition: tuple, position_list: list[tuple], **kwargs) -> Path:
+        return Path(self, startPosition, position_list, **kwargs)
 
-    # debug
-    def set_polygon(self, position_list: list, **kwargs): # -> CanvasPolygon:
-        polygon = CanvasPolygon(self, position_list, **kwargs)
-        polygon.draw()
-        self.canvas_polygon_list.append(polygon)
-        return polygon
+    # # debug
+    # def set_polygon(self, position_list: list, **kwargs): # -> CanvasPolygon:
+    #     polygon = CanvasPolygon(self, position_list, **kwargs)
+    #     polygon.draw()
+    #     self.canvas_polygon_list.append(polygon)
+    #     return polygon
 
-    # debug
-    def delete(self, map_object: any):
-        if isinstance(map_object, (MapPath, MapPositionMarker, CanvasPolygon)):
-            map_object.delete()
+    # # debug
+    # def delete(self, map_object: any):
+    #     if isinstance(map_object, (Path, Marker, CanvasPolygon)):
+    #         map_object.delete()
 
     # debug
     def delete_all_marker(self):
@@ -333,9 +330,9 @@ class PyQtMapView(QGraphicsView):
 
     # debug
     def delete_all_path(self):
-        for i in range(len(self.mapPathList) - 1, -1, -1):
-            self.mapPathList[i].delete()
-        self.mapPathList = []
+        for i in range(len(self.PathList) - 1, -1, -1):
+            self.PathList[i].delete()
+        self.PathList = []
 
     # debug
     def delete_all_polygon(self):
@@ -502,10 +499,10 @@ class PyQtMapView(QGraphicsView):
 
             image = self.get_tile_image_from_cache(round(self.zoom), *tile_name_position)
             if image is False:
-                canvas_tile = CanvasTile(self, self.not_loaded_tile_image, tile_name_position)
+                canvas_tile = Tile(self, self.not_loaded_tile_image, tile_name_position)
                 self.image_load_queue_tasks.append(((round(self.zoom), *tile_name_position), canvas_tile))
             else:
-                canvas_tile = CanvasTile(self, image, tile_name_position)
+                canvas_tile = Tile(self, image, tile_name_position)
 
             canvas_tile.draw()
 
@@ -520,11 +517,11 @@ class PyQtMapView(QGraphicsView):
             image = self.get_tile_image_from_cache(round(self.zoom), *tile_name_position)
             if image is False:
                 # image is not in image cache, load blank tile and append position to image_load_queue
-                canvas_tile = CanvasTile(self, self.not_loaded_tile_image, tile_name_position)
+                canvas_tile = Tile(self, self.not_loaded_tile_image, tile_name_position)
                 self.image_load_queue_tasks.append(((round(self.zoom), *tile_name_position), canvas_tile))
             else:
                 # image is already in cache
-                canvas_tile = CanvasTile(self, image, tile_name_position)
+                canvas_tile = Tile(self, image, tile_name_position)
 
             canvas_tile.draw()
 
@@ -558,11 +555,11 @@ class PyQtMapView(QGraphicsView):
                 image = self.get_tile_image_from_cache(round(self.zoom), *tile_name_position)
                 if image is False:
                     # image is not in image cache, load blank tile and append position to image_load_queue
-                    canvas_tile = CanvasTile(self, self.not_loaded_tile_image, tile_name_position)
+                    canvas_tile = Tile(self, self.not_loaded_tile_image, tile_name_position)
                     self.image_load_queue_tasks.append(((round(self.zoom), *tile_name_position), canvas_tile))
                 else:
                     # image is already in cache
-                    canvas_tile = CanvasTile(self, image, tile_name_position)
+                    canvas_tile = Tile(self, image, tile_name_position)
 
                 canvas_tile_column.append(canvas_tile)
 
@@ -576,7 +573,7 @@ class PyQtMapView(QGraphicsView):
         # # draw other objects on canvas
         for marker in self.canvas_marker_list:
             marker.draw()
-        for path in self.mapPathList:
+        for path in self.PathList:
             path.draw()
         # for polygon in self.canvas_polygon_list:
         #     polygon.draw()
@@ -653,7 +650,7 @@ class PyQtMapView(QGraphicsView):
             # draw other objects on canvas
             for marker in self.canvas_marker_list:
                 marker.draw()
-            for path in self.mapPathList:
+            for path in self.PathList:
                 path.draw(move=not called_after_zoom)
             # for polygon in self.canvas_polygon_list:
             #     polygon.draw(move=not called_after_zoom)
@@ -781,8 +778,8 @@ class PyQtMapView(QGraphicsView):
     # events            
     def resizeEvent(self, event):
         # return
-        if not self.mapButtons.buttonLayers is None:
-            self.mapButtons.buttonLayers.setGeometry(self.size().width() - 55, 20, 35, 35)
+        if not self.Buttons.buttonLayers is None:
+            self.Buttons.buttonLayers.setGeometry(self.size().width() - 55, 20, 35, 35)
         # only redraw if dimensions changed (for performance)
         height = event.size().height() 
         width = event.size().width()
@@ -898,3 +895,5 @@ class PyQtMapView(QGraphicsView):
         m.exec_(event.globalPos())  # display menu
         super().contextMenuEvent(event)
     
+class TileeManager:
+    None
