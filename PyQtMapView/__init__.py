@@ -1,6 +1,6 @@
 __version__ = "0.7"
 
-__all__ = ["PyQtMapView", "Marker"]
+__all__ = ["PyQtMapView", "Marker", "Path", "Buttons", "OfflineLoader"]
 
 from .mapView import PyQtMapView
 from .element import Marker

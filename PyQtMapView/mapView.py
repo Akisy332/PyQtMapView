@@ -24,8 +24,8 @@ class PyQtMapView(QGraphicsView):
     def __init__(self, *args,
                  width: int = 300,
                  height: int = 200,
-                 database_path: str = None,
-                 use_database_only: bool = False,
+                 dataPath: str | None = None,
+                 useDatabaseOnly: bool = False,
                  buttons: bool = True,
                  **kwargs):
         super().__init__(*args, **kwargs)
@@ -51,18 +51,18 @@ class PyQtMapView(QGraphicsView):
         # map layers
         self.map_layers: list[dict] = []
         self.map_layers.append({'name_map': 'Open Street Map',
-                                        'tile_server': 'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                        'tile_size': 256,
+                                        'tileServer': 'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                        'tileSize': 256,
                                         'name_dir': 'OpenStreetMap',
                                         'max_zoom': 19})
         self.map_layers.append({'name_map': 'Google satellite',
-                                        'tile_server': 'https://mt0.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}&s=Ga',
-                                        'tile_size': 256,
+                                        'tileServer': 'https://mt0.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}&s=Ga',
+                                        'tileSize': 256,
                                         'name_dir': 'GoogleSattelite' ,
                                         'max_zoom': 22})
         self.map_layers.append({'name_map': 'Google normal',
-                                        'tile_server': 'https://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}&s=Ga',
-                                        'tile_size': 256,
+                                        'tileServer': 'https://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}&s=Ga',
+                                        'tileSize': 256,
                                         'name_dir': 'GoogleNormal' ,
                                         'max_zoom': 22})
         
@@ -93,42 +93,14 @@ class PyQtMapView(QGraphicsView):
         self.canvas_marker_list: List[Marker] = []
         self.PathList: List[Path] = []
         # self.canvas_polygon_list: List[CanvasPolygon] = []
-          
-        # tile server and database path
-        self.use_database_only = use_database_only
-        self.data_path = os.path.dirname(os.path.abspath(__file__)) if database_path is None else database_path
-        self.set_tile_server('Open Street Map')
-        
+         
         # describes the tile layout
         self.zoom: float = 0
         self.upperLeftTilePos: Tuple[float, float] = (0, 0)  # in OSM coords
         self.lowerRightTilePos: Tuple[float, float] = (0, 0)
         self.last_zoom: float = self.zoom
         
-        # image cache and standard empty images
-        self.tile_image_cache: Dict[str, QPixmap] = {}
-        self.empty_tile_image = self.create_image((190, 190, 190)) # used for zooming and moving
-        self.not_loaded_tile_image = self.create_image((250, 250, 250)) # only used when image not found on tile server 
-
-        # pre caching for smoother movements (load tile images into cache at a certain radius around the pre_cache_position)
-        self.pre_cache_position: Union[Tuple[float, float], None] = None
-        self.pre_cache_thread = threading.Thread(daemon=True, target=self.pre_cache)
-        self.pre_cache_thread.start()
-
-        # image loading in background threads
-        self.timer = QTimer()                         
-        self.timer.setInterval(5) 
-        self.image_load_queue_tasks: List[tuple] = []  # task: ((zoom, x, y), canvas_tile_object)
-        self.image_load_queue_results: List[tuple] = []  # result: ((zoom, x, y), canvas_tile_object, photo_image)
-        self.timer.timeout.connect(self.update_canvas_tile_images)    
-        self.image_load_thread_pool: List[threading.Thread] = []
-        self.timer.start()
-        
-        # add background threads which load tile images from self.image_load_queue_tasks
-        for i in range(25):
-            image_load_thread = threading.Thread(daemon=True, target=self.load_images_background)
-            image_load_thread.start()
-            self.image_load_thread_pool.append(image_load_thread)
+        self.set_tile_server('Open Street Map', dataPath=dataPath)
         
         # set initial position
         self.set_zoom(17)
@@ -141,14 +113,7 @@ class PyQtMapView(QGraphicsView):
             self.Buttons = Buttons(self)
         
         self.init = False
-
-    def create_image(self, color, width = None, height=None):
-        if(width == None): width = self.tile_size
-        if(height == None): height = width
-        # Создаем изображение с заданным цветом
-        image = QImage(width, height, QImage.Format_RGB32)
-        image.fill(QColor(*color))
-        return QPixmap.fromImage(image)
+        
     
     def destroy(self):
         self.running = False
@@ -172,33 +137,36 @@ class PyQtMapView(QGraphicsView):
     
     def addTileServer(self, name_map: str, nameDir: str,  tileServer: str, tileSize: int = 256, maxZoom: int = 19):
         layer = {'name_map': name_map,
-                 'tile_server': tileServer,
-                 'tile_size': tileSize,
+                 'tileServer': tileServer,
+                 'tileSize': tileSize,
                  'name_dir': nameDir,
                  'max_zoom': maxZoom}
         self.map_layers.append(layer)
     
-    def set_tile_server(self, tile_server: str):
+    def set_tile_server(self, tileServer: str, useDatabaseOnly: bool = False, dataPath: str | None = None):
         for i, server in enumerate(self.map_layers):
-            if server.get("name_map") == tile_server:
+            if server.get("name_map") == tileServer:
                 self.currentLayers = i
                 break
         else:
             self.currentLayers = 0
             
-        self.tile_server: str = self.map_layers[self.currentLayers].get('tile_server')
-        self.tile_size: int = self.map_layers[self.currentLayers].get('tile_size')
-        self.database_path = os.path.join(self.data_path, f"{self.map_layers[self.currentLayers].get('name_dir')}.db")
+        self.tileServer: str = self.map_layers[self.currentLayers].get('tileServer')
+        self.tileSize: int = self.map_layers[self.currentLayers].get('tileSize')
+        if dataPath is None:
+            dataPath = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "TileStorage")
+        dataPath = os.path.join(dataPath, f"{self.map_layers[self.currentLayers].get('name_dir')}")
         self.max_zoom = self.map_layers[self.currentLayers].get('max_zoom')  # should be set according to tile server max zoom
-        self.min_zoom: int = math.ceil(math.log2(math.ceil(self._width / self.tile_size)))  # min zoom at which map completely fills widget    
-
-        self.image_load_queue_tasks = []
-        self.tile_image_cache: Dict[str, QPixmap] = {}
-        self.image_load_queue_results = []
+        self.min_zoom: int = math.ceil(math.log2(math.ceil(self._width / self.tileSize)))  # min zoom at which map completely fills widget    
         
         if not self.init is True:
+            self.tileManager.setDataPath(dataPath, True)
             self.clear_scene()
             self.draw_initial_array()
+        else:
+            self.tileManager = TileManager(self, useDatabaseOnly, dataPath)
+            
+        
     
     def get_position(self) -> tuple:
         """ returns current middle position of map widget in decimal coordinates """
@@ -226,10 +194,10 @@ class PyQtMapView(QGraphicsView):
             bottom_right_tile_position = decimal_to_osm(*position_bottom_right, zoom)
 
             # calculate tile positions for map corners
-            calc_top_left_tile_position = (middle_tile_position[0] - ((self.width / 2) / self.tile_size),
-                                           middle_tile_position[1] - ((self.height / 2) / self.tile_size))
-            calc_bottom_right_tile_position = (middle_tile_position[0] + ((self.width / 2) / self.tile_size),
-                                               middle_tile_position[1] + ((self.height / 2) / self.tile_size))
+            calc_top_left_tile_position = (middle_tile_position[0] - ((self.width / 2) / self.tileSize),
+                                           middle_tile_position[1] - ((self.height / 2) / self.tileSize))
+            calc_bottom_right_tile_position = (middle_tile_position[0] + ((self.width / 2) / self.tileSize),
+                                               middle_tile_position[1] + ((self.height / 2) / self.tileSize))
 
             # check if bounding box fits in map
             if calc_top_left_tile_position[0] < top_left_tile_position[0] and calc_top_left_tile_position[1] < top_left_tile_position[1] \
@@ -250,11 +218,11 @@ class PyQtMapView(QGraphicsView):
         # convert given decimal coordinates to OSM coordinates and set corner positions accordingly
         current_tile_position = decimal_to_osm(deg_x, deg_y, round(self.zoom))
         
-        self.upperLeftTilePos = (current_tile_position[0] - ((self._width / 2) / self.tile_size),
-                                    current_tile_position[1] - ((self._height / 2) / self.tile_size))
+        self.upperLeftTilePos = (current_tile_position[0] - ((self._width / 2) / self.tileSize),
+                                    current_tile_position[1] - ((self._height / 2) / self.tileSize))
 
-        self.lowerRightTilePos = (current_tile_position[0] + ((self._width / 2) / self.tile_size),
-                                     current_tile_position[1] + ((self._height / 2) / self.tile_size))
+        self.lowerRightTilePos = (current_tile_position[0] + ((self._width / 2) / self.tileSize),
+                                     current_tile_position[1] + ((self._height / 2) / self.tileSize))
         
         if marker is True:
             marker_object = self.set_marker(deg_x, deg_y, text, **kwargs)
@@ -284,7 +252,7 @@ class PyQtMapView(QGraphicsView):
                     upper_right_corner = decimal_to_osm(*result.bbox['northeast'], zoom)
                     tile_width = upper_right_corner[0] - lower_left_corner[0]
 
-                    if tile_width > math.floor(self.width / self.tile_size):
+                    if tile_width > math.floor(self.width / self.tileSize):
                         zoom_not_possible = False
                         self.set_zoom(zoom)
                         break
@@ -340,173 +308,21 @@ class PyQtMapView(QGraphicsView):
             self.canvas_polygon_list[i].delete()
         self.canvas_polygon_list = []
     
-    def pre_cache(self):
-        """ single threaded pre-chache tile images in area of self.pre_cache_position """
-
-        last_pre_cache_position = None
-        radius = 1
-        zoom = round(self.zoom)
-
-        if self.database_path is not None:
-            
-            db_connection = sqlite3.connect(self.database_path)
-            
-            db_cursor = db_connection.cursor()
-        else:
-            db_cursor = None
-
-        while self.running:
-            if last_pre_cache_position != self.pre_cache_position:
-                last_pre_cache_position = self.pre_cache_position
-                zoom = round(self.zoom)
-                radius = 1
-
-            if last_pre_cache_position is not None and radius <= 8:
-
-                # pre cache top and bottom row
-                for x in range(self.pre_cache_position[0] - radius, self.pre_cache_position[0] + radius + 1):
-                    if f"{zoom}{x}{self.pre_cache_position[1] + radius}" not in self.tile_image_cache:
-                        self.request_image(zoom, x, self.pre_cache_position[1] + radius, db_cursor=db_cursor)
-                    if f"{zoom}{x}{self.pre_cache_position[1] - radius}" not in self.tile_image_cache:
-                        self.request_image(zoom, x, self.pre_cache_position[1] - radius, db_cursor=db_cursor)
-
-                # pre cache left and right column
-                for y in range(self.pre_cache_position[1] - radius, self.pre_cache_position[1] + radius + 1):
-                    if f"{zoom}{self.pre_cache_position[0] + radius}{y}" not in self.tile_image_cache:
-                        self.request_image(zoom, self.pre_cache_position[0] + radius, y, db_cursor=db_cursor)
-                    if f"{zoom}{self.pre_cache_position[0] - radius}{y}" not in self.tile_image_cache:
-                        self.request_image(zoom, self.pre_cache_position[0] - radius, y, db_cursor=db_cursor)
-
-                # raise the radius
-                radius += 1
-
-            else:
-                time.sleep(0.1)
-
-            # 10_000 images = 80 MB RAM-usage
-            if len(self.tile_image_cache) > 10_000:  # delete random tiles if cache is too large
-                # create list with keys to delete
-                keys_to_delete = []
-                for key in self.tile_image_cache.keys():
-                    if len(self.tile_image_cache) - len(keys_to_delete) > 10_000:
-                        keys_to_delete.append(key)
-
-                # delete keys in list so that len(self.tile_image_cache) == 10_000
-                for key in keys_to_delete:
-                    del self.tile_image_cache[key]
-
-    def request_image(self, zoom: int, x: int, y: int, db_cursor=None) -> QPixmap:
-        # Если база данных доступна, сначала проверяем, есть ли тайл в базе данных
-        if db_cursor is not None:
-            try:
-                db_cursor.execute("SELECT t.tile_image FROM tiles t WHERE t.zoom=? AND t.x=? AND t.y=? AND t.server=?;",
-                                  (zoom, x, y, self.tile_server))
-                result = db_cursor.fetchone()
-
-                if result is not None:
-                    # Загружаем изображение из базы данных
-                    image_data = result[0]
-                    image_qt = QPixmap()
-                    image_qt.loadFromData(image_data)
-                    self.tile_image_cache[f"{zoom}{x}{y}"] = image_qt
-                    return image_qt
-                elif self.use_database_only:
-                    return self.empty_tile_image
-                else:
-                    pass
-
-            except sqlite3.OperationalError:
-                if self.use_database_only:
-                    return self.empty_tile_image
-                else:
-                    pass
-
-            except Exception:
-                return self.empty_tile_image
-
-        # Попробуем получить тайл с сервера
-        try:
-            url = self.tile_server.replace("{x}", str(x)).replace("{y}", str(y)).replace("{z}", str(zoom))
-            response = requests.get(url, stream=True, headers={"User-Agent": "PyQtMapView"})
-            response.raise_for_status()  # Проверка на успешный ответ
-
-            image_data = response.content
-            image_qt = QPixmap()
-            if not image_qt.loadFromData(image_data):
-                return self.empty_tile_image  # Если не удалось загрузить изображение
-
-            self.tile_image_cache[f"{zoom}{x}{y}"] = image_qt
-            return image_qt
-
-        except requests.exceptions.ConnectionError:
-            return self.empty_tile_image
-
-        except Exception:
-            return self.empty_tile_image
-    
-    def get_tile_image_from_cache(self, zoom: int, x: int, y: int):
-        if f"{zoom}{x}{y}" not in self.tile_image_cache:
-            return False
-        else:
-            return self.tile_image_cache[f"{zoom}{x}{y}"]
-    
-    def load_images_background(self):
-        if self.database_path is not None:
-            db_connection = sqlite3.connect(self.database_path)
-            db_cursor = db_connection.cursor()
-        else:
-            db_cursor = None
-
-        while self.running:
-            if len(self.image_load_queue_tasks) > 0:
-                # task queue structure: [((zoom, x, y), corresponding canvas tile object), ... ]
-                task = self.image_load_queue_tasks.pop()
-
-                zoom = task[0][0]
-                x, y = task[0][1], task[0][2]
-                canvas_tile = task[1]
-
-                image = self.get_tile_image_from_cache(zoom, x, y)
-                if image is False:
-                    image = self.request_image(zoom, x, y, db_cursor=db_cursor)
-                    if image is None:
-                        self.image_load_queue_tasks.append(task)
-                        continue
-
-                # result queue structure: [((zoom, x, y), corresponding canvas tile object, tile image), ... ]
-                self.image_load_queue_results.append(((zoom, x, y), canvas_tile, image))
-
-            else:
-                time.sleep(0.01)        
-    
-    def update_canvas_tile_images(self):
-        while len(self.image_load_queue_results) > 0 and self.running:
-            # result queue structure: [((zoom, x, y), corresponding canvas tile object, tile image), ... ]
-            result = self.image_load_queue_results.pop(0)
-
-            zoom, x, y = result[0][0], result[0][1], result[0][2]
-            canvas_tile = result[1]
-            image = result[2]
-
-            # check if zoom level of result is still up to date, otherwise don't update image
-            if zoom == round(self.zoom):
-                canvas_tile.set_image(image)
-
     def insert_row(self, insert: int, y_name_position: int):
 
         for x_pos in range(len(self.canvas_tile_array)):
             tile_name_position = self.canvas_tile_array[x_pos][0].tile_name_position[0], y_name_position
 
-            image = self.get_tile_image_from_cache(round(self.zoom), *tile_name_position)
+            image = self.tileManager.getTileImageFromCache(round(self.zoom), *tile_name_position)
             if image is False:
-                canvas_tile = Tile(self, self.not_loaded_tile_image, tile_name_position)
-                self.image_load_queue_tasks.append(((round(self.zoom), *tile_name_position), canvas_tile))
+                tile = Tile(self, self.tileManager.notLoadedTileImage, tile_name_position)
+                self.tileManager.imageLoadQueueTasks.append(((round(self.zoom), *tile_name_position), tile))
             else:
-                canvas_tile = Tile(self, image, tile_name_position)
+                tile = Tile(self, image, tile_name_position)
 
-            canvas_tile.draw()
+            tile.draw()
 
-            self.canvas_tile_array[x_pos].insert(insert, canvas_tile)   
+            self.canvas_tile_array[x_pos].insert(insert, tile)   
     
     def insert_column(self, insert: int, x_name_position: int):
         canvas_tile_column = []
@@ -514,23 +330,23 @@ class PyQtMapView(QGraphicsView):
         for y_pos in range(len(self.canvas_tile_array[0])):
             tile_name_position = x_name_position, self.canvas_tile_array[0][y_pos].tile_name_position[1]
 
-            image = self.get_tile_image_from_cache(round(self.zoom), *tile_name_position)
+            image = self.tileManager.getTileImageFromCache(round(self.zoom), *tile_name_position)
             if image is False:
                 # image is not in image cache, load blank tile and append position to image_load_queue
-                canvas_tile = Tile(self, self.not_loaded_tile_image, tile_name_position)
-                self.image_load_queue_tasks.append(((round(self.zoom), *tile_name_position), canvas_tile))
+                tile = Tile(self, self.tileManager.notLoadedTileImage, tile_name_position)
+                self.tileManager.imageLoadQueueTasks.append(((round(self.zoom), *tile_name_position), tile))
             else:
                 # image is already in cache
-                canvas_tile = Tile(self, image, tile_name_position)
+                tile = Tile(self, image, tile_name_position)
 
-            canvas_tile.draw()
+            tile.draw()
 
-            canvas_tile_column.append(canvas_tile)
+            canvas_tile_column.append(tile)
 
         self.canvas_tile_array.insert(insert, canvas_tile_column)       
            
     def draw_initial_array(self):
-        self.image_load_queue_tasks = []
+        self.tileManager.imageLoadQueueTasks = []
 
         x_tile_range = math.ceil(self.lowerRightTilePos[0]) - math.floor(self.upperLeftTilePos[0])
         y_tile_range = math.ceil(self.lowerRightTilePos[1]) - math.floor(self.upperLeftTilePos[1])
@@ -552,16 +368,16 @@ class PyQtMapView(QGraphicsView):
             for y_pos in range(y_tile_range):
                 tile_name_position = upper_left_x + x_pos, upper_left_y + y_pos
 
-                image = self.get_tile_image_from_cache(round(self.zoom), *tile_name_position)
+                image = self.tileManager.getTileImageFromCache(round(self.zoom), *tile_name_position)
                 if image is False:
                     # image is not in image cache, load blank tile and append position to image_load_queue
-                    canvas_tile = Tile(self, self.not_loaded_tile_image, tile_name_position)
-                    self.image_load_queue_tasks.append(((round(self.zoom), *tile_name_position), canvas_tile))
+                    tile = Tile(self, self.tileManager.notLoadedTileImage, tile_name_position)
+                    self.tileManager.imageLoadQueueTasks.append(((round(self.zoom), *tile_name_position), tile))
                 else:
                     # image is already in cache
-                    canvas_tile = Tile(self, image, tile_name_position)
+                    tile = Tile(self, image, tile_name_position)
 
-                canvas_tile_column.append(canvas_tile)
+                canvas_tile_column.append(tile)
 
             self.canvas_tile_array.append(canvas_tile_column)
 
@@ -579,7 +395,7 @@ class PyQtMapView(QGraphicsView):
         #     polygon.draw()
 
         # update pre-cache position
-        self.pre_cache_position = (round((self.upperLeftTilePos[0] + self.lowerRightTilePos[0]) / 2),
+        self.tileManager.preCachePosition = (round((self.upperLeftTilePos[0] + self.lowerRightTilePos[0]) / 2),
                                    round((self.upperLeftTilePos[1] + self.lowerRightTilePos[1]) / 2))
         
         self.mapScene.update()
@@ -656,15 +472,16 @@ class PyQtMapView(QGraphicsView):
             #     polygon.draw(move=not called_after_zoom)
 
             # update pre-cache position
-            self.pre_cache_position = (round((self.upperLeftTilePos[0] + self.lowerRightTilePos[0]) / 2),
+            self.tileManager.preCachePosition = (round((self.upperLeftTilePos[0] + self.lowerRightTilePos[0]) / 2),
                                        round((self.upperLeftTilePos[1] + self.lowerRightTilePos[1]) / 2))
+
             self.mapScene.update()
             
     def draw_zoom(self):
         
         if self.canvas_tile_array:
             # clear tile image loading queue, so that no old images from other zoom levels get displayed
-            self.image_load_queue_tasks = []
+            self.tileManager.imageLoadQueueTasks = []
 
             # upper left tile name position
             upper_left_x = math.floor(self.upperLeftTilePos[0])
@@ -675,15 +492,15 @@ class PyQtMapView(QGraphicsView):
 
                     tile_name_position = upper_left_x + x_pos, upper_left_y + y_pos
 
-                    image = self.get_tile_image_from_cache(round(self.zoom), *tile_name_position)
+                    image = self.tileManager.getTileImageFromCache(round(self.zoom), *tile_name_position)
                     if image is False:
-                        image = self.not_loaded_tile_image
+                        image = self.tileManager.notLoadedTileImage
                         # noinspection PyCompatibility
-                        self.image_load_queue_tasks.append(((round(self.zoom), *tile_name_position), self.canvas_tile_array[x_pos][y_pos]))
+                        self.tileManager.imageLoadQueueTasks.append(((round(self.zoom), *tile_name_position), self.canvas_tile_array[x_pos][y_pos]))
 
                     self.canvas_tile_array[x_pos][y_pos].set_image_and_position(image, tile_name_position)
 
-            self.pre_cache_position = (round((self.upperLeftTilePos[0] + self.lowerRightTilePos[0]) / 2),
+            self.tileManager.preCachePosition = (round((self.upperLeftTilePos[0] + self.lowerRightTilePos[0]) / 2),
                                        round((self.upperLeftTilePos[1] + self.lowerRightTilePos[1]) / 2))
             
             self.mapScene.update()
@@ -743,11 +560,11 @@ class PyQtMapView(QGraphicsView):
         
         current_tile_mouse_position = decimal_to_osm(*current_deg_mouse_position, round(self.zoom))
 
-        self.upperLeftTilePos = (current_tile_mouse_position[0] - relative_pointer_x * (self._width / self.tile_size),
-                                    current_tile_mouse_position[1] - relative_pointer_y * (self._height / self.tile_size))
+        self.upperLeftTilePos = (current_tile_mouse_position[0] - relative_pointer_x * (self._width / self.tileSize),
+                                    current_tile_mouse_position[1] - relative_pointer_y * (self._height / self.tileSize))
        
-        self.lowerRightTilePos = (current_tile_mouse_position[0] + (1 - relative_pointer_x) * (self._width / self.tile_size),
-                                     current_tile_mouse_position[1] + (1 - relative_pointer_y) * (self._height / self.tile_size))
+        self.lowerRightTilePos = (current_tile_mouse_position[0] + (1 - relative_pointer_x) * (self._width / self.tileSize),
+                                     current_tile_mouse_position[1] + (1 - relative_pointer_y) * (self._height / self.tileSize))
         
         if round(self.zoom) != round(self.last_zoom):
             self.check_map_border_crossing()
@@ -788,7 +605,7 @@ class PyQtMapView(QGraphicsView):
             self._width = width+2
             self._height = height+2
             self.setSceneRect(0, 0, self._width, self._height)
-            self.min_zoom = math.ceil(math.log2(math.ceil(self._width / self.tile_size)))
+            self.min_zoom = math.ceil(math.log2(math.ceil(self._width / self.tileSize)))
         
             self.set_zoom(self.zoom)  # call zoom to set the position vertices right
             self.draw_move()  # call move to draw new tiles or delete tiles
@@ -895,5 +712,200 @@ class PyQtMapView(QGraphicsView):
         m.exec_(event.globalPos())  # display menu
         super().contextMenuEvent(event)
     
-class TileeManager:
-    None
+    
+    
+class TileManager:
+    def __init__(self, gui: "PyQtMapView", useDatabaseOnly: bool, dataPath: str):
+        self.gui = gui
+        self.useDatabaseOnly = useDatabaseOnly
+        self.dataPath = dataPath
+        
+        self.running = True
+        
+        # pre caching for smoother movements (load tile images into cache at a certain radius around the preCachePosition)
+        self.preCachePosition: Union[Tuple[float, float], None] = None
+        self.preCacheThread = threading.Thread(daemon=True, target=self.preCache)
+        self.preCacheThread.start()
+
+        self.tileImageCache: Dict[str, QPixmap] = {}
+        
+        # image loading in background threads
+        self.timer = QTimer()                         
+        self.timer.setInterval(5) 
+        self.imageLoadQueueTasks: List[tuple] = []  # task: ((zoom, x, y), canvas_tile_object)
+        self.imageLoadQueueResults: List[tuple] = []  # result: ((zoom, x, y), canvas_tile_object, photo_image)
+        self.timer.timeout.connect(self.updateTileImages)    
+        self.imageLoadThreadPool: List[threading.Thread] = []
+        self.timer.start()
+        
+        # add background threads which load tile images from self.imageLoadQueueTasks
+        for i in range(25):
+            imageLoadThread = threading.Thread(daemon=True, target=self.loadImagesBackground)
+            imageLoadThread.start()
+            self.imageLoadThreadPool.append(imageLoadThread)
+            
+        self.setDataPath(dataPath, True)
+        
+    def createImage(self, color):
+        image = QImage(self.gui.tileSize, self.gui.tileSize, QImage.Format_RGB32)
+        image.fill(QColor(*color))
+        return QPixmap.fromImage(image)
+    
+    def setDataPath(self, dataPath: str, dataBase: bool):
+        self.dataPath = self.dataPath + ".db" if dataBase else dataPath
+        self.imageLoadQueueResults = []
+        self.imageLoadQueueTasks = []
+        self.tileImageCache: Dict[str, QPixmap] = {}
+        self.emptyTileImage = self.createImage((190, 190, 190)) # used for zooming and moving
+        self.notLoadedTileImage = self.createImage((250, 250, 250)) # only used when image not found on tile server 
+
+    def preCache(self):
+        """ single threaded pre-chache tile images in area of self.preCachePosition """
+        lastPreCachePosition = None
+        radius = 1
+        zoom = round(self.gui.zoom)
+
+        if self.dataPath is not None and os.path.exists(self.dataPath):
+            
+            dbConnection = sqlite3.connect(self.dataPath)
+            
+            dbCursor = dbConnection.cursor()
+        else:
+            dbCursor = None
+
+        while self.running:
+            if lastPreCachePosition != self.preCachePosition:
+                lastPreCachePosition = self.preCachePosition
+                zoom = round(self.gui.zoom)
+                radius = 1
+
+            if lastPreCachePosition is not None and radius <= 8:
+
+                # pre cache top and bottom row
+                for x in range(self.preCachePosition[0] - radius, self.preCachePosition[0] + radius + 1):
+                    if f"{zoom}{x}{self.preCachePosition[1] + radius}" not in self.tileImageCache:
+                        self.requestImage(zoom, x, self.preCachePosition[1] + radius, dbCursor==dbCursor)
+                    if f"{zoom}{x}{self.preCachePosition[1] - radius}" not in self.tileImageCache:
+                        self.requestImage(zoom, x, self.preCachePosition[1] - radius, dbCursor=dbCursor)
+
+                # pre cache left and right column
+                for y in range(self.preCachePosition[1] - radius, self.preCachePosition[1] + radius + 1):
+                    if f"{zoom}{self.preCachePosition[0] + radius}{y}" not in self.tileImageCache:
+                        self.requestImage(zoom, self.preCachePosition[0] + radius, y, dbCursor=dbCursor)
+                    if f"{zoom}{self.preCachePosition[0] - radius}{y}" not in self.tileImageCache:
+                        self.requestImage(zoom, self.preCachePosition[0] - radius, y, dbCursor=dbCursor)
+
+                # raise the radius
+                radius += 1
+                
+            else:
+                time.sleep(0.1)
+
+            # 10_000 images = 80 MB RAM-usage
+            if len(self.tileImageCache) > 10_000:  # delete random tiles if cache is too large
+                # create list with keys to delete
+                keys_to_delete = []
+                for key in self.tileImageCache.keys():
+                    if len(self.tileImageCache) - len(keys_to_delete) > 10_000:
+                        keys_to_delete.append(key)
+
+                # delete keys in list so that len(self.tileImageCache) == 10_000
+                for key in keys_to_delete:
+                    del self.tileImageCache[key]
+
+    def requestImage(self, zoom: int, x: int, y: int, dbCursor=None) -> QPixmap:
+        # Если база данных доступна, сначала проверяем, есть ли тайл в базе данных
+        if dbCursor is not None:
+            try:
+                dbCursor.execute("SELECT t.tile_image FROM tiles t WHERE t.zoom=? AND t.x=? AND t.y=? AND t.server=?;",
+                                  (zoom, x, y, self.gui.tileServer))
+                result = dbCursor.fetchone()
+
+                if result is not None:
+                    # Загружаем изображение из базы данных
+                    imageData = result[0]
+                    imageQt = QPixmap()
+                    imageQt.loadFromData(imageData)
+                    self.tileImageCache[f"{zoom}{x}{y}"] = imageQt
+                    return imageQt
+                elif self.useDatabaseOnly:
+                    return self.emptyTileImage
+                else:
+                    pass
+
+            except sqlite3.OperationalError:
+                if self.useDatabaseOnly:
+                    return self.emptyTileImage
+                else:
+                    pass
+
+            except Exception:
+                return self.emptyTileImage
+
+        # Попробуем получить тайл с сервера
+        try:
+            url = self.gui.tileServer.replace("{x}", str(x)).replace("{y}", str(y)).replace("{z}", str(zoom))
+            response = requests.get(url, stream=True, headers={"User-Agent": "PyQtMapView"})
+            response.raise_for_status()  # Проверка на успешный ответ
+
+            imageData = response.content
+            imageQt = QPixmap()
+            if not imageQt.loadFromData(imageData):
+                return self.emptyTileImage  # Если не удалось загрузить изображение
+
+            self.tileImageCache[f"{zoom}{x}{y}"] = imageQt
+            return imageQt
+
+        except requests.exceptions.ConnectionError:
+            return self.emptyTileImage
+
+        except Exception:
+            return self.emptyTileImage
+    
+    def getTileImageFromCache(self, zoom: int, x: int, y: int):
+        if f"{zoom}{x}{y}" not in self.tileImageCache:
+            return False
+        else:
+            return self.tileImageCache[f"{zoom}{x}{y}"]
+    
+    def loadImagesBackground(self):
+        if self.dataPath is not None and os.path.exists(self.dataPath):
+            dbConnection = sqlite3.connect(self.dataPath)
+            dbCursor = dbConnection.cursor()
+        else:
+            dbCursor = None
+
+        while self.running:
+            if len(self.imageLoadQueueTasks) > 0:
+                # task queue structure: [((zoom, x, y), corresponding canvas tile object), ... ]
+                task = self.imageLoadQueueTasks.pop()
+
+                zoom = task[0][0]
+                x, y = task[0][1], task[0][2]
+                tile = task[1]
+
+                image = self.getTileImageFromCache(zoom, x, y)
+                if image is False:
+                    image = self.requestImage(zoom, x, y, dbCursor=dbCursor)
+                    if image is None:
+                        self.imageLoadQueueTasks.append(task)
+                        continue
+
+                # result queue structure: [((zoom, x, y), corresponding canvas tile object, tile image), ... ]
+                self.imageLoadQueueResults.append(((zoom, x, y), tile, image))
+
+            else:
+                time.sleep(0.01)        
+    
+    def updateTileImages(self):
+        while len(self.imageLoadQueueResults) > 0 and self.running:
+            # result queue structure: [((zoom, x, y), corresponding canvas tile object, tile image), ... ]
+            result = self.imageLoadQueueResults.pop(0)
+
+            zoom, x, y = result[0][0], result[0][1], result[0][2]
+            tile = result[1]
+            image = result[2]
+
+            # check if zoom level of result is still up to date, otherwise don't update image
+            if zoom == round(self.gui.zoom):
+                tile.setImage(image)

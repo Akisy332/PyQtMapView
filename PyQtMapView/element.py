@@ -31,7 +31,7 @@ class Tile:
         self.tile_name_position = tile_name_position
         self.draw(image_update=True)
 
-    def set_image(self, image):
+    def setImage(self, image):
         self.image = image
         self.draw(image_update=True)
 
@@ -59,7 +59,7 @@ class Tile:
         canvas_pos_x, canvas_pos_y = self.get_canvas_pos()
         
         if self.canvas_object is None:
-            if not (self.image == self.mapView.not_loaded_tile_image or self.image == self.mapView.empty_tile_image):
+            if not (self.image == self.mapView.tileManager.notLoadedTileImage or self.image == self.mapView.tileManager.emptyTileImage):
                 self.canvas_object = self.mapView.tile_group
                 self.pixmap_item = QGraphicsPixmapItem(self.image)
                 self.pixmap_item.setPos(canvas_pos_x, canvas_pos_y)
@@ -68,7 +68,7 @@ class Tile:
             self.pixmap_item.setPos(canvas_pos_x, canvas_pos_y)
 
             if image_update:
-                if not (self.image == self.mapView.not_loaded_tile_image or self.image == self.mapView.empty_tile_image):
+                if not (self.image == self.mapView.tileManager.notLoadedTileImage or self.image == self.mapView.tileManager.emptyTileImage):
                     self.pixmap_item.setPixmap(self.image)
                 else:
                     if not self.pixmap_item == None:
@@ -248,20 +248,6 @@ class Marker(QGraphicsPixmapItem):
             # draw icon image for marker
             self.setPos(canvasPosX, canvasPosY)
             self.setVisible(self.markerVisible)
-            
-            # if self.image is not None and self.imageZoomVisibility[0] <= self.mapView.zoom <= self.imageZoomVisibility[1]\
-            #         and not self.imageVisible:
-            #     if self.canvasImage is None:
-            #         self.canvasImage = self.mapView.canvas.create_image(canvasPosX, canvasPosY + (self.textOffsetY - 30),
-            #                                                                 anchor=tkinter.S,
-            #                                                                 image=self.image,
-            #                                                                 tag=("marker", "marker_image"))
-            #     else:
-            #         self.mapView.canvas.coords(self.canvasImage, canvasPosX, canvasPosY + (self.textOffsetY - 30))
-            # else:
-            #     if self.canvasImage is not None:
-            #         self.mapView.canvas.delete(self.canvasImage)
-            #         self.canvasImage = None
         else:
             self.setVisible(False)
 
