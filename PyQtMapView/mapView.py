@@ -86,13 +86,11 @@ class PyQtMapView(QGraphicsView):
         self.last_move_time: Union[float, None] = None
         self.fadingTimer = QTimer()                         
         self.fadingTimer.setInterval(1) 
-        self.fadingTimer.timeout.connect(self.fading_move)    
+        self.fadingTimer.timeout.connect(self.__fadingMove)    
 
         # canvas objects
         self.canvas_tile_array: List[List[Tile]] = []
-        self.canvas_marker_list: List[Marker] = []
-        self.PathList: List[Path] = []
-        # self.canvas_polygon_list: List[CanvasPolygon] = []
+        self.elementsList: List[Marker] = []
          
         # describes the tile layout
         self.zoom: float = 0
@@ -103,14 +101,14 @@ class PyQtMapView(QGraphicsView):
         self.set_tile_server('Open Street Map', dataPath=dataPath)
         
         # set initial position
-        self.set_zoom(17)
-        self.set_position(56.45112740752376, 84.96449640447315, marker=True)  # Brandenburger Tor, Berlin
+        self.setZoom(17)
+        self.set_position(56.45112740752376, 84.96449640447315)  # Brandenburger Tor, Berlin
 
         # right click menu
         self.right_click_menu_commands: List[dict] = []  # list of dictionaries with "label": str, "command": Callable, "pass_coords": bool
 
         if buttons is True:
-            self.Buttons = Buttons(self)
+            self.addElement(Buttons())
         
         self.init = False
         
@@ -161,13 +159,11 @@ class PyQtMapView(QGraphicsView):
         
         if not self.init is True:
             self.tileManager.setDataPath(dataPath, True)
-            self.clear_scene()
-            self.draw_initial_array()
+            self.clearScene()
+            self.__drawInitialArray()
         else:
             self.tileManager = TileManager(self, useDatabaseOnly, dataPath)
             
-        
-    
     def get_position(self) -> tuple:
         """ returns current middle position of map widget in decimal coordinates """
 
@@ -209,10 +205,10 @@ class PyQtMapView(QGraphicsView):
                 break
 
         # set zoom to last fitting zoom and position to middle position of bounding box
-        self.set_zoom(last_fitting_zoom_level)
+        self.setZoom(last_fitting_zoom_level)
         self.set_position(middle_position_lat, middle_position_long)
     
-    def set_position(self, deg_x, deg_y, text=None, marker=False, **kwargs) -> Marker:
+    def set_position(self, deg_x, deg_y):
         """ set new middle position of map in decimal coordinates """
 
         # convert given decimal coordinates to OSM coordinates and set corner positions accordingly
@@ -224,15 +220,9 @@ class PyQtMapView(QGraphicsView):
         self.lowerRightTilePos = (current_tile_position[0] + ((self._width / 2) / self.tileSize),
                                      current_tile_position[1] + ((self._height / 2) / self.tileSize))
         
-        if marker is True:
-            marker_object = self.set_marker(deg_x, deg_y, text, **kwargs)
-        else:
-            marker_object = None
 
-        self.check_map_border_crossing()
-        self.draw_initial_array()
-        # self.draw_move() enough?
-        return marker_object
+        self.__checkMapBorderCrossing()
+        self.__drawInitialArray()
     
     # debug
     def set_address(self, address_string: str, marker: bool = False, text: str = None, **kwargs) -> Marker:
@@ -254,13 +244,13 @@ class PyQtMapView(QGraphicsView):
 
                     if tile_width > math.floor(self.width / self.tileSize):
                         zoom_not_possible = False
-                        self.set_zoom(zoom)
+                        self.setZoom(zoom)
                         break
 
                 if zoom_not_possible:
-                    self.set_zoom(self.max_zoom)
+                    self.setZoom(self.max_zoom)
             else:
-                self.set_zoom(10)
+                self.setZoom(10)
 
             if text is None:
                 try:
@@ -272,43 +262,60 @@ class PyQtMapView(QGraphicsView):
         else:
             return False
     
-    def set_marker(self, deg_x: float, deg_y: float, text: str = None, **kwargs) -> Marker:
-        return Marker(self, (deg_x, deg_y), text=text, **kwargs)
     
-    def set_path(self, startPosition: tuple, position_list: list[tuple], **kwargs) -> Path:
-        return Path(self, startPosition, position_list, **kwargs)
-
-    # # debug
-    # def set_polygon(self, position_list: list, **kwargs): # -> CanvasPolygon:
-    #     polygon = CanvasPolygon(self, position_list, **kwargs)
-    #     polygon.draw()
-    #     self.canvas_polygon_list.append(polygon)
-    #     return polygon
-
-    # # debug
-    # def delete(self, map_object: any):
-    #     if isinstance(map_object, (Path, Marker, CanvasPolygon)):
-    #         map_object.delete()
+    def addElement(self, element):
+        """Add new element on map"""
+        element.mapView = self
+        if isinstance(element, Buttons):
+            self.buttons = element
+            element.addButtons()            
+        else:
+            self.elementsList.append(element)
+            self.mapScene.addItem(element)
+            element.draw()
 
     # debug
     def delete_all_marker(self):
-        for i in range(len(self.canvas_marker_list) - 1, -1, -1):
-            self.canvas_marker_list[i].delete()
-        self.canvas_marker_list = []
-
-    # debug
-    def delete_all_path(self):
-        for i in range(len(self.PathList) - 1, -1, -1):
-            self.PathList[i].delete()
-        self.PathList = []
-
-    # debug
-    def delete_all_polygon(self):
-        for i in range(len(self.canvas_polygon_list) - 1, -1, -1):
-            self.canvas_polygon_list[i].delete()
-        self.canvas_polygon_list = []
+        for i in range(len(self.elementsList) - 1, -1, -1):
+            self.elementsList[i].delete()
+        self.elementsList = []
     
-    def insert_row(self, insert: int, y_name_position: int):
+    # debug
+    def clearScene(self):
+        for itemA in self.canvas_tile_array:
+            for itemB in itemA:
+                self.mapScene.removeItem(itemB.pixmap_item)
+    
+    def setZoom(self, zoom: int, relative_pointer_x: float = 0.5, relative_pointer_y: float = 0.5):
+
+        mouse_tile_pos_x = self.upperLeftTilePos[0] + (self.lowerRightTilePos[0] - self.upperLeftTilePos[0]) * relative_pointer_x
+        mouse_tile_pos_y = self.upperLeftTilePos[1] + (self.lowerRightTilePos[1] - self.upperLeftTilePos[1]) * relative_pointer_y
+        
+        current_deg_mouse_position = osm_to_decimal(mouse_tile_pos_x,
+                                                    mouse_tile_pos_y,
+                                                    round(self.zoom))
+        self.zoom = zoom
+        
+        if self.zoom > self.max_zoom:
+            self.zoom = self.max_zoom
+        if self.zoom < self.min_zoom:
+            self.zoom = self.min_zoom
+        
+        current_tile_mouse_position = decimal_to_osm(*current_deg_mouse_position, round(self.zoom))
+
+        self.upperLeftTilePos = (current_tile_mouse_position[0] - relative_pointer_x * (self._width / self.tileSize),
+                                    current_tile_mouse_position[1] - relative_pointer_y * (self._height / self.tileSize))
+       
+        self.lowerRightTilePos = (current_tile_mouse_position[0] + (1 - relative_pointer_x) * (self._width / self.tileSize),
+                                     current_tile_mouse_position[1] + (1 - relative_pointer_y) * (self._height / self.tileSize))
+        
+        if round(self.zoom) != round(self.last_zoom):
+            self.__checkMapBorderCrossing()
+            self.__drawZoom()
+            self.last_zoom = round(self.zoom)
+    
+        
+    def __insertRow(self, insert: int, y_name_position: int):
 
         for x_pos in range(len(self.canvas_tile_array)):
             tile_name_position = self.canvas_tile_array[x_pos][0].tile_name_position[0], y_name_position
@@ -324,7 +331,7 @@ class PyQtMapView(QGraphicsView):
 
             self.canvas_tile_array[x_pos].insert(insert, tile)   
     
-    def insert_column(self, insert: int, x_name_position: int):
+    def __insertColumn(self, insert: int, x_name_position: int):
         canvas_tile_column = []
 
         for y_pos in range(len(self.canvas_tile_array[0])):
@@ -345,7 +352,7 @@ class PyQtMapView(QGraphicsView):
 
         self.canvas_tile_array.insert(insert, canvas_tile_column)       
            
-    def draw_initial_array(self):
+    def __drawInitialArray(self):
         self.tileManager.imageLoadQueueTasks = []
 
         x_tile_range = math.ceil(self.lowerRightTilePos[0]) - math.floor(self.upperLeftTilePos[0])
@@ -387,12 +394,8 @@ class PyQtMapView(QGraphicsView):
                 self.canvas_tile_array[x_pos][y_pos].draw()
                 
         # # draw other objects on canvas
-        for marker in self.canvas_marker_list:
-            marker.draw()
-        for path in self.PathList:
-            path.draw()
-        # for polygon in self.canvas_polygon_list:
-        #     polygon.draw()
+        for element in self.elementsList:
+            element.draw()
 
         # update pre-cache position
         self.tileManager.preCachePosition = (round((self.upperLeftTilePos[0] + self.lowerRightTilePos[0]) / 2),
@@ -400,7 +403,7 @@ class PyQtMapView(QGraphicsView):
         
         self.mapScene.update()
         
-    def draw_move(self, called_after_zoom: bool = False):
+    def __drawMove(self, called_after_zoom: bool = False):
 
         if self.canvas_tile_array:
             # insert or delete rows on top
@@ -408,7 +411,7 @@ class PyQtMapView(QGraphicsView):
             top_y_diff = self.upperLeftTilePos[1] - top_y_name_position
             if top_y_diff <= 0:
                 for y_diff in range(1, math.ceil(-top_y_diff) + 1):
-                    self.insert_row(insert=0, y_name_position=top_y_name_position - y_diff)
+                    self.__insertRow(insert=0, y_name_position=top_y_name_position - y_diff)
             elif top_y_diff >= 1:
                 for y_diff in range(1, math.ceil(top_y_diff)):
                     for x in range(len(self.canvas_tile_array) - 1, -1, -1):
@@ -421,7 +424,7 @@ class PyQtMapView(QGraphicsView):
             left_x_diff = self.upperLeftTilePos[0] - left_x_name_position
             if left_x_diff <= 0:
                 for x_diff in range(1, math.ceil(-left_x_diff) + 1):
-                    self.insert_column(insert=0, x_name_position=left_x_name_position - x_diff)
+                    self.__insertColumn(insert=0, x_name_position=left_x_name_position - x_diff)
             elif left_x_diff >= 1:
                 for x_diff in range(1, math.ceil(left_x_diff)):
                     if len(self.canvas_tile_array) > 1:
@@ -435,7 +438,7 @@ class PyQtMapView(QGraphicsView):
             bottom_y_diff = self.lowerRightTilePos[1] - bottom_y_name_position
             if bottom_y_diff >= 1:
                 for y_diff in range(1, math.ceil(bottom_y_diff)):
-                    self.insert_row(insert=len(self.canvas_tile_array[0]), y_name_position=bottom_y_name_position + y_diff)
+                    self.__insertRow(insert=len(self.canvas_tile_array[0]), y_name_position=bottom_y_name_position + y_diff)
             elif bottom_y_diff <= 1:
                 for y_diff in range(1, math.ceil(-bottom_y_diff) + 1):
                     for x in range(len(self.canvas_tile_array) - 1, -1, -1):
@@ -449,7 +452,7 @@ class PyQtMapView(QGraphicsView):
 
             if right_x_diff >= 1:
                 for x_diff in range(1, math.ceil(right_x_diff)):
-                    self.insert_column(insert=len(self.canvas_tile_array), x_name_position=right_x_name_position + x_diff)
+                    self.__insertColumn(insert=len(self.canvas_tile_array), x_name_position=right_x_name_position + x_diff)
             elif right_x_diff <= 1:
                 for x_diff in range(1, math.ceil(-right_x_diff) + 1):
                     if len(self.canvas_tile_array) > 1:
@@ -464,12 +467,8 @@ class PyQtMapView(QGraphicsView):
                     self.canvas_tile_array[x_pos][y_pos].draw()
             
             # draw other objects on canvas
-            for marker in self.canvas_marker_list:
-                marker.draw()
-            for path in self.PathList:
-                path.draw(move=not called_after_zoom)
-            # for polygon in self.canvas_polygon_list:
-            #     polygon.draw(move=not called_after_zoom)
+            for element in self.elementsList:
+                element.draw()
 
             # update pre-cache position
             self.tileManager.preCachePosition = (round((self.upperLeftTilePos[0] + self.lowerRightTilePos[0]) / 2),
@@ -477,7 +476,7 @@ class PyQtMapView(QGraphicsView):
 
             self.mapScene.update()
             
-    def draw_zoom(self):
+    def __drawZoom(self):
         
         if self.canvas_tile_array:
             # clear tile image loading queue, so that no old images from other zoom levels get displayed
@@ -504,9 +503,9 @@ class PyQtMapView(QGraphicsView):
                                        round((self.upperLeftTilePos[1] + self.lowerRightTilePos[1]) / 2))
             
             self.mapScene.update()
-            self.draw_move(called_after_zoom=True)
+            self.__drawMove(called_after_zoom=True)
 
-    def fading_move(self):
+    def __fadingMove(self):
         delta_t = time.time() - self.last_move_time
         self.last_move_time = time.time()
 
@@ -536,42 +535,14 @@ class PyQtMapView(QGraphicsView):
             self.lowerRightTilePos = lowerRightTilePos
             self.upperLeftTilePos = upperLeftTilePos
             
-            self.check_map_border_crossing()
-            self.draw_move()
+            self.__checkMapBorderCrossing()
+            self.__drawMove()
 
             if abs(self.move_velocity[0]) > 1 or abs(self.move_velocity[1]) > 1:
                 if not self.running:
                     self.fadingTimer.stop()
-    
-    def set_zoom(self, zoom: int, relative_pointer_x: float = 0.5, relative_pointer_y: float = 0.5):
-
-        mouse_tile_pos_x = self.upperLeftTilePos[0] + (self.lowerRightTilePos[0] - self.upperLeftTilePos[0]) * relative_pointer_x
-        mouse_tile_pos_y = self.upperLeftTilePos[1] + (self.lowerRightTilePos[1] - self.upperLeftTilePos[1]) * relative_pointer_y
         
-        current_deg_mouse_position = osm_to_decimal(mouse_tile_pos_x,
-                                                    mouse_tile_pos_y,
-                                                    round(self.zoom))
-        self.zoom = zoom
-        
-        if self.zoom > self.max_zoom:
-            self.zoom = self.max_zoom
-        if self.zoom < self.min_zoom:
-            self.zoom = self.min_zoom
-        
-        current_tile_mouse_position = decimal_to_osm(*current_deg_mouse_position, round(self.zoom))
-
-        self.upperLeftTilePos = (current_tile_mouse_position[0] - relative_pointer_x * (self._width / self.tileSize),
-                                    current_tile_mouse_position[1] - relative_pointer_y * (self._height / self.tileSize))
-       
-        self.lowerRightTilePos = (current_tile_mouse_position[0] + (1 - relative_pointer_x) * (self._width / self.tileSize),
-                                     current_tile_mouse_position[1] + (1 - relative_pointer_y) * (self._height / self.tileSize))
-        
-        if round(self.zoom) != round(self.last_zoom):
-            self.check_map_border_crossing()
-            self.draw_zoom()
-            self.last_zoom = round(self.zoom)
-        
-    def check_map_border_crossing(self):
+    def __checkMapBorderCrossing(self):
         diff_x, diff_y = 0, 0
         if self.upperLeftTilePos[0] < 0:
             diff_x += 0 - self.upperLeftTilePos[0]
@@ -587,16 +558,12 @@ class PyQtMapView(QGraphicsView):
         self.upperLeftTilePos = self.upperLeftTilePos[0] + diff_x, self.upperLeftTilePos[1] + diff_y
         self.lowerRightTilePos = self.lowerRightTilePos[0] + diff_x, self.lowerRightTilePos[1] + diff_y       
             
-    def clear_scene(self):
-        for itemA in self.canvas_tile_array:
-            for itemB in itemA:
-                self.mapScene.removeItem(itemB.pixmap_item)
-                
+            
     # events            
     def resizeEvent(self, event):
         # return
-        if not self.Buttons.buttonLayers is None:
-            self.Buttons.buttonLayers.setGeometry(self.size().width() - 55, 20, 35, 35)
+        if not self.buttons.buttonLayers is None:
+            self.buttons.buttonLayers.setGeometry(self.size().width() - 55, 20, 35, 35)
         # only redraw if dimensions changed (for performance)
         height = event.size().height() 
         width = event.size().width()
@@ -607,8 +574,8 @@ class PyQtMapView(QGraphicsView):
             self.setSceneRect(0, 0, self._width, self._height)
             self.min_zoom = math.ceil(math.log2(math.ceil(self._width / self.tileSize)))
         
-            self.set_zoom(self.zoom)  # call zoom to set the position vertices right
-            self.draw_move()  # call move to draw new tiles or delete tiles
+            self.setZoom(self.zoom)  # call zoom to set the position vertices right
+            self.__drawMove()  # call move to draw new tiles or delete tiles
             
         super().resizeEvent(event)
     
@@ -619,7 +586,7 @@ class PyQtMapView(QGraphicsView):
         relative_mouse_x = event.pos().x() / self._width
         relative_mouse_y = event.pos().y() / self._height
         new_zoom = self.zoom + event.angleDelta().y() * 0.01
-        self.set_zoom(new_zoom, relative_pointer_x=relative_mouse_x, relative_pointer_y=relative_mouse_y)
+        self.setZoom(new_zoom, relative_pointer_x=relative_mouse_x, relative_pointer_y=relative_mouse_y)
         super().wheelEvent(event)
     
     def mouseMoveEvent(self, event):
@@ -651,8 +618,8 @@ class PyQtMapView(QGraphicsView):
             self.lowerRightTilePos = (self.lowerRightTilePos[0] + tile_move_x, self.lowerRightTilePos[1] + tile_move_y)
             self.upperLeftTilePos = (self.upperLeftTilePos[0] + tile_move_x, self.upperLeftTilePos[1] + tile_move_y)
 
-            self.check_map_border_crossing()
-            self.draw_move()
+            self.__checkMapBorderCrossing()
+            self.__drawMove()
         super().mouseMoveEvent(event)
     
     def mousePressEvent(self, event):

@@ -74,12 +74,11 @@ class Tile:
                     if not self.pixmap_item == None:
                         self.mapView.mapScene.removeItem(self.pixmap_item)
                     self.canvas_object = None
-                    
+
 
 
 class Marker(QGraphicsPixmapItem):
     def __init__(self,
-                 mapView: "PyQtMapView",
                  position: tuple,
                  text: str = None,
                  textColor: str = "#652A22",
@@ -87,17 +86,13 @@ class Marker(QGraphicsPixmapItem):
                  markerColorCircle: str = "#000000",
                  markerColorOutside: str = "#FF0000",
                  command: Callable = None,
-                 image: QImage = None,
-                 imageHeight = None,
-                 imageWidth = None,
                  icon: QImage = None,
                  iconHeight = None,
                  iconWidth = None,
                  imageZoomVisibility: tuple = (0, float("inf"))):
         super().__init__()
-        self.mapView = mapView
+        self.mapView: PyQtMapView = None
         self.position = position
-        self.image = image
         self.icon = icon
         
         self.imageZoomVisibility = imageZoomVisibility
@@ -134,17 +129,13 @@ class Marker(QGraphicsPixmapItem):
         self.setOffset(-self.icon.rect().width()/2, -self.icon.rect().height())
         self.setPixmap(self.icon)
         
-        self.mapView.canvas_marker_list.append(self)
-        
-        self.mapView.mapScene.addItem(self)
+
         self.setZValue(3)
         
-        #пофикисить исчезание текста при смене карты и смене видимости
+        #пофиксить исчезание текста при смене карты и смене видимости
         self.text = text
         if text is not None:
             self.setText(text, textColor, font)
-        
-        self.draw()
         
     def __imageFromPixmap(self, image: QImage, width: int = None, height: int = None) -> QPixmap:
         if width is None:
@@ -174,8 +165,9 @@ class Marker(QGraphicsPixmapItem):
         self.icon = self.__imageFromPixmap(image)
 
     def delete(self):
-        self.mapView.canvas_marker_list.remove(self)
-        self.mapView.mapScene.removeItem(self)
+        if self.mapView:
+            self.mapView.canvas_marker_list.remove(self)
+            self.mapView.mapScene.removeItem(self)
 
     def setPosition(self, deg_x, deg_y):
         self.position = (deg_x, deg_y)
@@ -241,45 +233,48 @@ class Marker(QGraphicsPixmapItem):
 
         return canvasPosX, canvasPosY
     
-    def draw(self, event=None):
-        canvasPosX, canvasPosY = self.__getCanvasPos(self.position)
+    def draw(self):
+        if self.mapView:
+            canvasPosX, canvasPosY = self.__getCanvasPos(self.position)
 
-        if 0 - 50 < canvasPosX < self.mapView._width + 50 and 0 < canvasPosY < self.mapView._height + 70:
-            # draw icon image for marker
-            self.setPos(canvasPosX, canvasPosY)
-            self.setVisible(self.markerVisible)
-        else:
-            self.setVisible(False)
+            if 0 - 50 < canvasPosX < self.mapView._width + 50 and 0 < canvasPosY < self.mapView._height + 70:
+                # draw icon image for marker
+                self.setPos(canvasPosX, canvasPosY)
+                self.setVisible(self.markerVisible)
+            else:
+                self.setVisible(False)
 
 
 
 class Buttons:
-    def __init__(self, mapView: "PyQtMapView",
+    def __init__(self,
                  zoomIn: bool = True,
                  zoomOut: bool = True,
                  layers: bool = True):
-        self.mapView = mapView
+        self.mapView: PyQtMapView = None
         
+        self.zoomInFlag = zoomIn
+        self.zoomOutFlag = zoomOut
+        self.layersFlag = layers
+         
         # buttons
         self.buttonZoomIn = None
         self.buttonZoomOut = None
         self.buttonLayers = None
-        
-        self.add_buttons(zoomIn, zoomOut, layers)
     
-    def add_buttons(self, zoomIn: bool = True, zoomOut: bool = True, layers: bool = True):
-        if zoomIn is True:
+    def addButtons(self):
+        if self.zoomInFlag is True:
             self.buttonZoomIn = QPushButton("+", self.mapView)
             self.buttonZoomIn.setGeometry(20, 20, 29, 29)
             self.buttonZoomIn.clicked.connect(self.zoomIn)
-        if zoomOut is True:    
+        if self.zoomOutFlag is True:    
             self.buttonZoomOut = QPushButton("-", self.mapView)
             self.buttonZoomOut.setGeometry(20, 60, 29, 29)
             self.buttonZoomOut.clicked.connect(self.zoomOut)
-        if layers is True:
-            current_path = os.path.dirname(os.path.abspath(__file__))
-            image_path = os.path.join(current_path, 'icon-layers.png')
-            self.icon = QImage(image_path)
+        if self.layersFlag is True:
+            currentPath = os.path.dirname(os.path.abspath(__file__))
+            imagePath = os.path.join(currentPath, 'icon-layers.png')
+            self.icon = QImage(imagePath)
             buttonLayers_icon = QPixmap.fromImage(self.icon)
             self.buttonLayers = QPushButton("", self.mapView)
 
@@ -289,10 +284,10 @@ class Buttons:
             self.buttonLayers.clicked.connect(self.change_layers)
     
     def zoomIn(self):
-        self.mapView.set_zoom(self.mapView.zoom + 1)
+        self.mapView.setZoom(self.mapView.zoom + 1)
     
     def zoomOut(self):
-        self.mapView.set_zoom(self.mapView.zoom - 1)
+        self.mapView.setZoom(self.mapView.zoom - 1)
     
     def change_layers(self):
         # Создаем меню для выбора слоев
@@ -312,7 +307,6 @@ class Buttons:
 
 class Path(QGraphicsLineItem):
     def __init__(self,
-                 mapView: "PyQtMapView",
                  startPosition: tuple,
                  positionList: list[tuple],
                  color: str = "#3E69CB",
@@ -320,7 +314,7 @@ class Path(QGraphicsLineItem):
                  namePath: str = None,
                  widthLine: int = 9):
         super().__init__()
-        self.mapView = mapView
+        self.mapView: PyQtMapView = None
         self.pathColor = color
         self.command = command
         self.widthLine = widthLine
@@ -342,10 +336,7 @@ class Path(QGraphicsLineItem):
         self.__lastUpperLeftTilePos = None
         self.__lastPositionListLength = len(self.__positionList)
         
-        self.mapView.PathList.append(self)
-        self.mapView.mapScene.addItem(self)
         self.setZValue(1)
-        self.draw()
 
     # User methods
     def getSegments(self) -> int:
@@ -371,8 +362,9 @@ class Path(QGraphicsLineItem):
         
     def delete(self):
         """Deleting a path. """
-        self.mapView.PathList.remove(self)
-        self.mapView.mapScene.removeItem(self)
+        if self.mapView:
+            self.mapView.PathList.remove(self)
+            self.mapView.mapScene.removeItem(self)
 
     def setPositionList(self, startPosition: tuple, positionList: list[tuple]):
         """A new list of points and  line colors for the path.
@@ -422,7 +414,6 @@ class Path(QGraphicsLineItem):
         self.pathVisible = visible
         self.draw()
     
-    # Working methods
     def __getCanvasPos(self, position, widgetTileWidth, widgetTileHeight):
         tilePosition = decimal_to_osm(*position, round(self.mapView.zoom))
 
@@ -432,54 +423,55 @@ class Path(QGraphicsLineItem):
         return canvas_pos_x, canvas_pos_y
     
     def draw(self, move=False):
-        if self.pathVisible == True:
-            self.setVisible(True)
-            
-            new_line_length = self.__lastPositionListLength != len(self.__positionList)
-            self.__lastPositionListLength = len(self.__positionList)
+        if self.mapView:
+            if self.pathVisible == True:
+                self.setVisible(True)
 
-            widgetTileWidth = self.mapView.lowerRightTilePos[0] - self.mapView.upperLeftTilePos[0]
-            widgetTileHeight = self.mapView.lowerRightTilePos[1] - self.mapView.upperLeftTilePos[1]
+                new_line_length = self.__lastPositionListLength != len(self.__positionList)
+                self.__lastPositionListLength = len(self.__positionList)
 
-            if move is True and self.__lastUpperLeftTilePos is not None and new_line_length is False:
-                x_move = ((self.__lastUpperLeftTilePos[0] - self.mapView.upperLeftTilePos[0]) / widgetTileWidth) * self.mapView._width
-                y_move = ((self.__lastUpperLeftTilePos[1] - self.mapView.upperLeftTilePos[1]) / widgetTileHeight) * self.mapView._height
+                widgetTileWidth = self.mapView.lowerRightTilePos[0] - self.mapView.upperLeftTilePos[0]
+                widgetTileHeight = self.mapView.lowerRightTilePos[1] - self.mapView.upperLeftTilePos[1]
 
-                for i in range(0, len(self.__positionList)* 2, 2):
-                    self.__canvasLinePositions[i] += x_move
-                    self.__canvasLinePositions[i + 1] += y_move
+                if move is True and self.__lastUpperLeftTilePos is not None and new_line_length is False:
+                    x_move = ((self.__lastUpperLeftTilePos[0] - self.mapView.upperLeftTilePos[0]) / widgetTileWidth) * self.mapView._width
+                    y_move = ((self.__lastUpperLeftTilePos[1] - self.mapView.upperLeftTilePos[1]) / widgetTileHeight) * self.mapView._height
+
+                    for i in range(0, len(self.__positionList)* 2, 2):
+                        self.__canvasLinePositions[i] += x_move
+                        self.__canvasLinePositions[i + 1] += y_move
+                else:
+                    self.__canvasLinePositions = []
+                    for position in self.__positionList:
+                        canvas_position = self.__getCanvasPos(position[0], widgetTileWidth, widgetTileHeight)
+                        self.__canvasLinePositions.append(canvas_position[0])
+                        self.__canvasLinePositions.append(canvas_position[1])
+
+                segments = int(len(self.__canvasLinePositions) / 2 - 1)
+                if self.__segments != segments:
+                    index = 0
+                    for i in range(0, segments - self.__segments):
+                        self.__segments += 1
+                        lineItem = QGraphicsLineItem(self.__canvasLinePositions[index], self.__canvasLinePositions[index + 1],
+                                                     self.__canvasLinePositions[index + 2], self.__canvasLinePositions[index + 3], self)
+                        index +=2
+                        self.__canvasLine.append((lineItem, QColor(self.__positionList[int(index/2)][1])))
+                        line_pen = QPen(self.__canvasLine[-1][1])
+                        line_pen.setWidth(self.widthLine)
+                        lineItem.setPen(line_pen)
+                else:
+                    index = 0
+                    for item in self.__canvasLine:
+                        item[0].setLine(self.__canvasLinePositions[index], self.__canvasLinePositions[index + 1],
+                                     self.__canvasLinePositions[index + 2], self.__canvasLinePositions[index + 3])
+                        line_pen = QPen(item[1])
+                        line_pen.setWidth(self.widthLine)
+                        item[0].setPen(line_pen)
+                        index+=2
+
+                self.__lastUpperLeftTilePos = self.mapView.upperLeftTilePos
             else:
-                self.__canvasLinePositions = []
-                for position in self.__positionList:
-                    canvas_position = self.__getCanvasPos(position[0], widgetTileWidth, widgetTileHeight)
-                    self.__canvasLinePositions.append(canvas_position[0])
-                    self.__canvasLinePositions.append(canvas_position[1])
-
-            segments = int(len(self.__canvasLinePositions) / 2 - 1)
-            if self.__segments != segments:
-                index = 0
-                for i in range(0, segments - self.__segments):
-                    self.__segments += 1
-                    lineItem = QGraphicsLineItem(self.__canvasLinePositions[index], self.__canvasLinePositions[index + 1],
-                                                 self.__canvasLinePositions[index + 2], self.__canvasLinePositions[index + 3], self)
-                    index +=2
-                    self.__canvasLine.append((lineItem, QColor(self.__positionList[int(index/2)][1])))
-                    line_pen = QPen(self.__canvasLine[-1][1])
-                    line_pen.setWidth(self.widthLine)
-                    lineItem.setPen(line_pen)
-            else:
-                index = 0
-                for item in self.__canvasLine:
-                    item[0].setLine(self.__canvasLinePositions[index], self.__canvasLinePositions[index + 1],
-                                 self.__canvasLinePositions[index + 2], self.__canvasLinePositions[index + 3])
-                    line_pen = QPen(item[1])
-                    line_pen.setWidth(self.widthLine)
-                    item[0].setPen(line_pen)
-                    index+=2
-
-            self.__lastUpperLeftTilePos = self.mapView.upperLeftTilePos
-        else:
-            self.setVisible(False)
+                self.setVisible(False)
 
     # Events
     def hoverEnterEvent(self, event):
