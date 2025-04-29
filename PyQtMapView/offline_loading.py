@@ -18,7 +18,7 @@ class OfflineLoader (QObject):
     signalDownloadCount = pyqtSignal(int)
     signalZoom = pyqtSignal(int)
     
-    def __init__(self, path=None, tileServer=None, name_server = None, max_zoom=19, storage_mode: int = 0, selection_mode: int = 0, console_output: bool = True):
+    def __init__(self, path=None, tileServer=None, name_server = None, maxZoom=19, storage_mode: int = 0, selection_mode: int = 0, console_output: bool = True):
         super().__init__()
         if tileServer is None:
             self.tileServer = "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -50,7 +50,7 @@ class OfflineLoader (QObject):
         else:
             self.selection_mode = selection_mode
             
-        self.max_zoom = max_zoom
+        self.maxZoom = maxZoom
         self.console_output = console_output
         
         self.task_queue = []
@@ -185,7 +185,7 @@ class OfflineLoader (QObject):
             # create tables if it not exists
             create_server_table = """CREATE TABLE IF NOT EXISTS server (
                                             url VARCHAR(300) PRIMARY KEY NOT NULL,
-                                            max_zoom INTEGER NOT NULL);"""
+                                            maxZoom INTEGER NOT NULL);"""
 
             create_tiles_table = """CREATE TABLE IF NOT EXISTS tiles (
                                             zoom INTEGER NOT NULL,
@@ -203,7 +203,7 @@ class OfflineLoader (QObject):
             # insert tileServer if not in database
             dbCursor.execute(f"SELECT * FROM server s WHERE s.url='{self.tileServer}';")
             if len(dbCursor.fetchall()) == 0:
-                dbCursor.execute(f"INSERT INTO server (url, max_zoom) VALUES (?, ?);", (self.tileServer, self.max_zoom))
+                dbCursor.execute(f"INSERT INTO server (url, maxZoom) VALUES (?, ?);", (self.tileServer, self.maxZoom))
                 dbConnection.commit()
 
         # create threads

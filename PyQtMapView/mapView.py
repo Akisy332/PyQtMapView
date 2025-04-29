@@ -49,22 +49,22 @@ class PyQtMapView(QGraphicsView):
         self.mapScene.addItem(self.tile_group) 
         
         # map layers
-        self.map_layers: list[dict] = []
-        self.map_layers.append({'name_map': 'Open Street Map',
+        self.mapLayers: list[dict] = []
+        self.mapLayers.append({'nameMap': 'Open Street Map',
                                         'tileServer': 'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
                                         'tileSize': 256,
-                                        'name_dir': 'OpenStreetMap',
-                                        'max_zoom': 19})
-        self.map_layers.append({'name_map': 'Google satellite',
+                                        'nameDir': 'OpenStreetMap',
+                                        'maxZoom': 19})
+        self.mapLayers.append({'nameMap': 'Google satellite',
                                         'tileServer': 'https://mt0.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}&s=Ga',
                                         'tileSize': 256,
-                                        'name_dir': 'GoogleSattelite' ,
-                                        'max_zoom': 22})
-        self.map_layers.append({'name_map': 'Google normal',
+                                        'nameDir': 'GoogleSattelite' ,
+                                        'maxZoom': 22})
+        self.mapLayers.append({'nameMap': 'Google normal',
                                         'tileServer': 'https://mt0.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}&s=Ga',
                                         'tileSize': 256,
-                                        'name_dir': 'GoogleNormal' ,
-                                        'max_zoom': 22})
+                                        'nameDir': 'GoogleNormal' ,
+                                        'maxZoom': 22})
         
         self.currentLayers: int = 0
         
@@ -98,11 +98,11 @@ class PyQtMapView(QGraphicsView):
         self.lowerRightTilePos: Tuple[float, float] = (0, 0)
         self.last_zoom: float = self.zoom
         
-        self.set_tile_server('Open Street Map', dataPath=dataPath)
+        self.setTileServer('Open Street Map', dataPath=dataPath)
         
         # set initial position
         self.setZoom(17)
-        self.set_position(56.45112740752376, 84.96449640447315)  # Brandenburger Tor, Berlin
+        self.setPosition((56.45112740752376, 84.96449640447315))  # Brandenburger Tor, Berlin
 
         # right click menu
         self.right_click_menu_commands: List[dict] = []  # list of dictionaries with "label": str, "command": Callable, "pass_coords": bool
@@ -133,44 +133,6 @@ class PyQtMapView(QGraphicsView):
         coordinate_mouse_pos = osm_to_decimal(tile_mouse_x, tile_mouse_y, round(self.zoom))
         return coordinate_mouse_pos
     
-    def addTileServer(self, name_map: str, nameDir: str,  tileServer: str, tileSize: int = 256, maxZoom: int = 19):
-        layer = {'name_map': name_map,
-                 'tileServer': tileServer,
-                 'tileSize': tileSize,
-                 'name_dir': nameDir,
-                 'max_zoom': maxZoom}
-        self.map_layers.append(layer)
-    
-    def set_tile_server(self, tileServer: str, useDatabaseOnly: bool = False, dataPath: str | None = None):
-        for i, server in enumerate(self.map_layers):
-            if server.get("name_map") == tileServer:
-                self.currentLayers = i
-                break
-        else:
-            self.currentLayers = 0
-            
-        self.tileServer: str = self.map_layers[self.currentLayers].get('tileServer')
-        self.tileSize: int = self.map_layers[self.currentLayers].get('tileSize')
-        if dataPath is None:
-            dataPath = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "TileStorage")
-        dataPath = os.path.join(dataPath, f"{self.map_layers[self.currentLayers].get('name_dir')}")
-        self.max_zoom = self.map_layers[self.currentLayers].get('max_zoom')  # should be set according to tile server max zoom
-        self.min_zoom: int = math.ceil(math.log2(math.ceil(self._width / self.tileSize)))  # min zoom at which map completely fills widget    
-        
-        if not self.init is True:
-            self.tileManager.setDataPath(dataPath, True)
-            self.clearScene()
-            self.__drawInitialArray()
-        else:
-            self.tileManager = TileManager(self, useDatabaseOnly, dataPath)
-            
-    def get_position(self) -> tuple:
-        """ returns current middle position of map widget in decimal coordinates """
-
-        return osm_to_decimal((self.lowerRightTilePos[0] + self.upperLeftTilePos[0]) / 2,
-                              (self.lowerRightTilePos[1] + self.upperLeftTilePos[1]) / 2,
-                              round(self.zoom))
-
     # debug
     def fit_bounding_box(self, position_top_left: Tuple[float, float], position_bottom_right: Tuple[float, float]):
         """ Fit the map to contain a bounding box with the maximum zoom level possible. """
@@ -179,11 +141,11 @@ class PyQtMapView(QGraphicsView):
         if not (position_top_left[0] > position_bottom_right[0] and position_top_left[1] < position_bottom_right[1]):
             raise ValueError("incorrect bounding box positions, <must be top_left_position> <bottom_right_position>")
 
-        last_fitting_zoom_level = self.min_zoom
+        last_fitting_zoom_level = self.minZoom
         middle_position_lat, middle_position_long = (position_bottom_right[0] + position_top_left[0]) / 2, (position_bottom_right[1] + position_top_left[1]) / 2
 
         # loop through zoom levels beginning at minimum zoom
-        for zoom in range(self.min_zoom, self.max_zoom + 1):
+        for zoom in range(self.minZoom, self.maxZoom + 1):
             # calculate tile positions for bounding box
             middle_tile_position = decimal_to_osm(middle_position_lat, middle_position_long, zoom)
             top_left_tile_position = decimal_to_osm(*position_top_left, zoom)
@@ -206,23 +168,8 @@ class PyQtMapView(QGraphicsView):
 
         # set zoom to last fitting zoom and position to middle position of bounding box
         self.setZoom(last_fitting_zoom_level)
-        self.set_position(middle_position_lat, middle_position_long)
+        self.setPosition((middle_position_lat, middle_position_long))
     
-    def set_position(self, deg_x, deg_y):
-        """ set new middle position of map in decimal coordinates """
-
-        # convert given decimal coordinates to OSM coordinates and set corner positions accordingly
-        current_tile_position = decimal_to_osm(deg_x, deg_y, round(self.zoom))
-        
-        self.upperLeftTilePos = (current_tile_position[0] - ((self._width / 2) / self.tileSize),
-                                    current_tile_position[1] - ((self._height / 2) / self.tileSize))
-
-        self.lowerRightTilePos = (current_tile_position[0] + ((self._width / 2) / self.tileSize),
-                                     current_tile_position[1] + ((self._height / 2) / self.tileSize))
-        
-
-        self.__checkMapBorderCrossing()
-        self.__drawInitialArray()
     
     # debug
     def set_address(self, address_string: str, marker: bool = False, text: str = None, **kwargs) -> Marker:
@@ -237,7 +184,7 @@ class PyQtMapView(QGraphicsView):
             if hasattr(result, "bbox"):
                 zoom_not_possible = True
 
-                for zoom in range(self.min_zoom, self.max_zoom + 1):
+                for zoom in range(self.minZoom, self.maxZoom + 1):
                     lower_left_corner = decimal_to_osm(*result.bbox['southwest'], zoom)
                     upper_right_corner = decimal_to_osm(*result.bbox['northeast'], zoom)
                     tile_width = upper_right_corner[0] - lower_left_corner[0]
@@ -248,7 +195,7 @@ class PyQtMapView(QGraphicsView):
                         break
 
                 if zoom_not_possible:
-                    self.setZoom(self.max_zoom)
+                    self.setZoom(self.maxZoom)
             else:
                 self.setZoom(10)
 
@@ -258,13 +205,13 @@ class PyQtMapView(QGraphicsView):
                 except:
                     text = address_string
 
-            return self.set_position(*result.latlng, marker=marker, text=text, **kwargs)
+            return self.setPosition(*result.latlng, marker=marker, text=text, **kwargs)
         else:
             return False
     
     
     def addElement(self, element):
-        """Add new element on map"""
+        """ Add new element on map """
         element.mapView = self
         if isinstance(element, Buttons):
             self.buttons = element
@@ -273,7 +220,10 @@ class PyQtMapView(QGraphicsView):
             self.elementsList.append(element)
             self.mapScene.addItem(element)
             element.draw()
-
+    
+    def removeElement(self, element):
+        None
+        
     # debug
     def delete_all_marker(self):
         for i in range(len(self.elementsList) - 1, -1, -1):
@@ -286,8 +236,83 @@ class PyQtMapView(QGraphicsView):
             for itemB in itemA:
                 self.mapScene.removeItem(itemB.pixmap_item)
     
-    def setZoom(self, zoom: int, relative_pointer_x: float = 0.5, relative_pointer_y: float = 0.5):
+    
+    
+    def addTileServer(self, nameMap: str, nameDir: str,  tileServer: str, tileSize: int = 256, maxZoom: int = 19):
+        """ Adds a new server for tiles """
+        layer = {'nameMap': nameMap,
+                 'tileServer': tileServer,
+                 'tileSize': tileSize,
+                 'nameDir': nameDir,
+                 'maxZoom': maxZoom}
+        self.mapLayers.append(layer)
+    
+    def removeTileServer(self, nameMap: str) -> bool:
+        """ Deletes the tile server, returns True if deleted """
+        for i, server in enumerate(self.mapLayers):
+            if server.get("nameMap") == nameMap:
+                if i == self.currentLayers:
+                    if i == len(self.mapLayers)-1:
+                        self.setTileServer(self.mapLayers[i-1].get('nameMap'))
+                    else:
+                        self.setTileServer(self.mapLayers[i].get('nameMap'))
+                self.mapLayers.pop(i)
+                return True
+        return False
+    
+    def setTileServer(self, tileServer: str, useDatabaseOnly: bool = False, dataPath: str | None = None):
+        """ Sets a defined tile server """
+        for i, server in enumerate(self.mapLayers):
+            if server.get("nameMap") == tileServer:
+                self.currentLayers = i
+                break
+        else:
+            self.currentLayers = 0
+            
+        self.tileServer: str = self.mapLayers[self.currentLayers].get('tileServer')
+        self.tileSize: int = self.mapLayers[self.currentLayers].get('tileSize')
+        if dataPath is None:
+            dataPath = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "TileStorage")
+        dataPath = os.path.join(dataPath, f"{self.mapLayers[self.currentLayers].get('nameDir')}")
+        self.maxZoom = self.mapLayers[self.currentLayers].get('maxZoom')  # should be set according to tile server max zoom
+        self.minZoom: int = math.ceil(math.log2(math.ceil(self._width / self.tileSize)))  # min zoom at which map completely fills widget    
+        
+        if not self.init is True:
+            self.tileManager.setDataPath(dataPath, True)
+            self.clearScene()
+            self.__drawInitialArray()
+        else:
+            self.tileManager = TileManager(self, useDatabaseOnly, dataPath)
+    
+    def getTileServer(self) -> str:
+        """ Returns the current tile server """
+        return self.mapLayers[self.currentLayers].get('nameMap')
+    
+    def getPosition(self) -> tuple:
+        """ Returns current middle position of map widget in decimal coordinates """
 
+        return osm_to_decimal((self.lowerRightTilePos[0] + self.upperLeftTilePos[0]) / 2,
+                              (self.lowerRightTilePos[1] + self.upperLeftTilePos[1]) / 2,
+                              round(self.zoom))
+
+    def setPosition(self, position: tuple):
+        """ Set new middle position of map in decimal coordinates """
+
+        # convert given decimal coordinates to OSM coordinates and set corner positions accordingly
+        current_tile_position = decimal_to_osm(position[0], position[1], round(self.zoom))
+        
+        self.upperLeftTilePos = (current_tile_position[0] - ((self._width / 2) / self.tileSize),
+                                    current_tile_position[1] - ((self._height / 2) / self.tileSize))
+
+        self.lowerRightTilePos = (current_tile_position[0] + ((self._width / 2) / self.tileSize),
+                                     current_tile_position[1] + ((self._height / 2) / self.tileSize))
+        
+
+        self.__checkMapBorderCrossing()
+        self.__drawInitialArray()
+    
+    def setZoom(self, zoom: int, relative_pointer_x: float = 0.5, relative_pointer_y: float = 0.5):
+        """ Sets the zoom of the map """
         mouse_tile_pos_x = self.upperLeftTilePos[0] + (self.lowerRightTilePos[0] - self.upperLeftTilePos[0]) * relative_pointer_x
         mouse_tile_pos_y = self.upperLeftTilePos[1] + (self.lowerRightTilePos[1] - self.upperLeftTilePos[1]) * relative_pointer_y
         
@@ -296,10 +321,10 @@ class PyQtMapView(QGraphicsView):
                                                     round(self.zoom))
         self.zoom = zoom
         
-        if self.zoom > self.max_zoom:
-            self.zoom = self.max_zoom
-        if self.zoom < self.min_zoom:
-            self.zoom = self.min_zoom
+        if self.zoom > self.maxZoom:
+            self.zoom = self.maxZoom
+        if self.zoom < self.minZoom:
+            self.zoom = self.minZoom
         
         current_tile_mouse_position = decimal_to_osm(*current_deg_mouse_position, round(self.zoom))
 
@@ -314,6 +339,10 @@ class PyQtMapView(QGraphicsView):
             self.__drawZoom()
             self.last_zoom = round(self.zoom)
     
+    def getZoom(self) -> int:
+        """ Returns the current zoom """
+        return round(self.zoom)
+        
         
     def __insertRow(self, insert: int, y_name_position: int):
 
@@ -572,7 +601,7 @@ class PyQtMapView(QGraphicsView):
             self._width = width+2
             self._height = height+2
             self.setSceneRect(0, 0, self._width, self._height)
-            self.min_zoom = math.ceil(math.log2(math.ceil(self._width / self.tileSize)))
+            self.minZoom = math.ceil(math.log2(math.ceil(self._width / self.tileSize)))
         
             self.setZoom(self.zoom)  # call zoom to set the position vertices right
             self.__drawMove()  # call move to draw new tiles or delete tiles

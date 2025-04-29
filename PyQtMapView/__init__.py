@@ -1,5 +1,3 @@
-__version__ = "0.9"
-
 __all__ = ["PyQtMapView", "Marker", "Path", "Buttons", "OfflineLoader"]
 
 from .mapView import PyQtMapView

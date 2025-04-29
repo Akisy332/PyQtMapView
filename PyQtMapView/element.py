@@ -292,16 +292,16 @@ class Buttons:
     def change_layers(self):
         # Создаем меню для выбора слоев
         menu = QMenu(self.mapView)
-        for name in self.mapView.map_layers:
-            menu.addAction(name.get('name_map'), self.select_layer)
+        for name in self.mapView.mapLayers:
+            menu.addAction(name.get('nameMap'), self.select_layer)
         
         global_pos = self.buttonLayers.mapToGlobal(self.buttonLayers.rect().bottomRight())
         menu.exec_(QPoint(global_pos.x() - menu.sizeHint().width(), global_pos.y()))
 
     def select_layer(self):
-        for name in self.mapView.map_layers:
-            if name.get('name_map') == self.mapView.sender().text():
-                self.mapView.set_tile_server(name.get('name_map')) 
+        for name in self.mapView.mapLayers:
+            if name.get('nameMap') == self.mapView.sender().text():
+                self.mapView.setTileServer(name.get('nameMap')) 
                 
             
 
